@@ -1,0 +1,16 @@
+services:
+  worker:
+    build: ./worker
+    volumes:
+      - ./temp:/app/temp
+    depends_on:
+      - voicevox
+    environment:
+      - VOICEVOX_HOST=voicevox
+    tty: true
+
+  voicevox:
+    image: voicevox/voicevox_engine:cpu-latest
+    ports:
+      - "50021:50021"
+    restart: always

@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# 一時保存用ディレクトリ（動画や音声はGitHubに上げない）
+temp/
+*.mp3
+*.wav
+*.txt
+
+# Docker
+.DS_Store
