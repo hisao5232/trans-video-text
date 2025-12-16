@@ -1,12 +1,23 @@
 import os
+import re  # ファイル名洗浄用
 from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
 
+def sanitize_filename(filename):
+    """ファイル名に使えない文字を削除・置換する"""
+    return re.sub(r'[\\/:*?"<>|]', '', filename)
+
 def download_audio(url, output_dir="temp"):
-    """YouTubeから音声のみをダウンロードする"""
+    """YouTubeから音声のみをダウンロードし、タイトルを返す"""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
+    # タイトル取得のために一度情報を抽出
+    with YoutubeDL() as ydl:
+        info = ydl.extract_info(url, download=False)
+        title = info.get('title', 'output')
+        safe_title = sanitize_filename(title)
+
     options = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -14,18 +25,17 @@ def download_audio(url, output_dir="temp"):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'outtmpl': f'{output_dir}/%(id)s.%(ext)s',
+        # ファイル名をタイトルにする設定
+        'outtmpl': f'{output_dir}/{safe_title}.%(ext)s',
     }
     
     with YoutubeDL(options) as ydl:
-        info = ydl.extract_info(url, download=True)
-        return f"{output_dir}/{info['id']}.mp3"
+        ydl.download([url])
+        return f"{output_dir}/{safe_title}.mp3", safe_title
 
 def transcribe_audio(file_path):
     """音声を文字起こしする"""
-    # CPUで動作させる設定 (GPUがある場合は 'cuda' に変更)
     model = WhisperModel("base", device="cpu", compute_type="int8")
-    
     segments, info = model.transcribe(file_path, beam_size=5)
     
     text_result = ""
@@ -35,18 +45,18 @@ def transcribe_audio(file_path):
     
     return text_result
 
-# 実行テスト
 if __name__ == "__main__":
     video_url = "https://youtu.be/q0p5rg_6OKg"
     
     print("--- ダウンロード開始 ---")
-    audio_file = download_audio(video_url)
+    audio_file_path, title = download_audio(video_url)
     
-    print("--- 文字起こし開始 ---")
-    result_text = transcribe_audio(audio_file)
+    print(f"--- 文字起こし開始: {title} ---")
+    result_text = transcribe_audio(audio_file_path)
     
-    # テキストファイルに保存
-    with open("temp/output.txt", "w", encoding="utf-8") as f:
+    # タイトルをファイル名にして保存
+    output_text_path = f"temp/{title}.txt"
+    with open(output_text_path, "w", encoding="utf-8") as f:
         f.write(result_text)
     
-    print("--- 完了 ---")
+    print(f"--- 完了: {output_text_path} ---")
