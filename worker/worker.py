@@ -1,7 +1,15 @@
 import os
 import re  # ファイル名洗浄用
+import requests
 from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
+
+# --- 環境変数からホスト名を取得 (docker-compose.ymlで設定したサービス名) ---
+REWRITER_HOST = os.environ.get("REWRITER_HOST", "rewriter")
+# --- 環境変数からホスト名を取得 ---
+REWRITER_HOST = os.environ.get("REWRITER_HOST", "rewriter") 
+# VOICEVOX連携用に追加
+VOICEVOX_HOST = os.environ.get("VOICEVOX_HOST", "voicevox")
 
 def sanitize_filename(filename):
     """ファイル名に使えない文字を削除・置換する"""
@@ -45,6 +53,27 @@ def transcribe_audio(file_path):
     
     return text_result
 
+def rewrite_text(raw_text):
+    """RewriterコンテナのAPIを呼び出し、Geminiで校正する"""
+    api_url = f"http://{REWRITER_HOST}:5000/rewrite"
+    
+    print(f"--- Rewriter API ({api_url}) へ校正リクエストを送信 ---")
+    
+    try:
+        response = requests.post(api_url, json={"text": raw_text})
+        response.raise_for_status() # HTTPエラーが発生した場合に例外を投げる
+        
+        rewritten_text = response.json().get("rewritten_text")
+        if rewritten_text:
+            return rewritten_text
+        else:
+            print("警告: Rewriterから有効な校正済みテキストが返されませんでした。生テキストを使用します。")
+            return raw_text
+            
+    except requests.exceptions.RequestException as e:
+        print(f"エラー: Rewriterコンテナとの通信に失敗しました。生テキストを使用します。エラー: {e}")
+        return raw_text
+
 if __name__ == "__main__":
     video_url = "https://youtu.be/q0p5rg_6OKg"
     
@@ -52,11 +81,21 @@ if __name__ == "__main__":
     audio_file_path, title = download_audio(video_url)
     
     print(f"--- 文字起こし開始: {title} ---")
-    result_text = transcribe_audio(audio_file_path)
+    raw_text = transcribe_audio(audio_file_path)
+
+# 2. Geminiによる校正（NEW）
+    rewritten_text = rewrite_text(raw_text)
     
-    # タイトルをファイル名にして保存
-    output_text_path = f"temp/{title}.txt"
-    with open(output_text_path, "w", encoding="utf-8") as f:
-        f.write(result_text)
+# 3. テキストファイルを保存
+    output_raw_path = f"temp/{title}_raw.txt" # 生テキスト
+    output_rewritten_path = f"temp/{title}_rewritten.txt" # 校正済みテキスト
     
-    print(f"--- 完了: {output_text_path} ---")
+    with open(output_raw_path, "w", encoding="utf-8") as f:
+        f.write(raw_text)
+        
+    with open(output_rewritten_path, "w", encoding="utf-8") as f:
+        f.write(rewritten_text)
+        
+    print(f"--- 完了 ---")
+    print(f"生テキスト保存先: {output_raw_path}")
+    print(f"校正済みテキスト保存先: {output_rewritten_path}")

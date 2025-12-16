@@ -10,3 +10,5 @@ temp/
 
 # Docker
 .DS_Store
+
+.env

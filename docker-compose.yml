@@ -5,12 +5,23 @@ services:
       - ./temp:/app/temp
     depends_on:
       - voicevox
+      - rewriter
     environment:
       - VOICEVOX_HOST=voicevox
+      - REWRITER_HOST=rewriter
     tty: true
+
+  rewriter: # ★新規サービス
+    build: ./rewriter
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY} 
+    ports:
+      - "5000:5000" # 外部からのアクセスを許可したい場合（必須ではないがデバッグ用に残す）
+    restart: always
 
   voicevox:
     image: voicevox/voicevox_engine:cpu-latest
     ports:
       - "50021:50021"
     restart: always
+    
