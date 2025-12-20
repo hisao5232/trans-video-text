@@ -1,0 +1,104 @@
+/* 全体の背景設定 */
+body {
+    background-color: #121212;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+/* メインのコンテナ */
+.container {
+    background-color: #1e1e1e;
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+    width: 90%;
+    max-width: 600px;
+    border: 1px solid #333;
+}
+
+h1 {
+    color: #00d4ff;
+    text-align: center;
+    margin-top: 0;
+    font-weight: 300;
+    letter-spacing: 1px;
+}
+
+/* 入力エリア */
+.input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input[type="text"] {
+    flex: 1;
+    background-color: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 12px;
+    color: #fff;
+    outline: none;
+}
+
+input[type="text"]:focus {
+    border-color: #00d4ff;
+}
+
+button {
+    background-color: #00d4ff;
+    color: #121212;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+button:hover {
+    background-color: #00a3cc;
+}
+
+button:disabled {
+    background-color: #555;
+    cursor: not-allowed;
+}
+
+/* ログパネル（ここが重要！） */
+.log-panel {
+    background-color: #000;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 15px;
+    height: 300px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #00ff41; /* ターミナルグリーン */
+    box-shadow: inset 0 0 10px rgba(0,255,0,0.1);
+}
+
+/* スクロールバーのカスタマイズ */
+.log-panel::-webkit-scrollbar {
+    width: 8px;
+}
+.log-panel::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+/* 結果表示メッセージ */
+#result-msg {
+    margin-top: 15px;
+    text-align: center;
+    font-size: 14px;
+}
+.success { color: #00ff88; }
+.error { color: #ff4d4d; }

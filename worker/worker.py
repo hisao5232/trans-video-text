@@ -1,5 +1,5 @@
 import os
-import re  # ファイル名洗浄用
+import re
 import requests
 from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
@@ -7,6 +7,8 @@ import json
 import io
 from pydub import AudioSegment
 import threading
+import collections # ログ用に追加
+from datetime import datetime # ログ用に追加
 from flask import Flask, request, jsonify
 
 # --- 環境設定 ---
@@ -16,16 +18,28 @@ STORAGE_HOST = "storage"
 
 app = Flask(__name__)
 
+# --- ログ管理システム ---
+# 最新100行のログを保持（古いものから自動削除）
+log_buffer = collections.deque(maxlen=100)
+
+def log_message(msg):
+    """ターミナルに出力し、同時にメモリ内のバッファに保存する"""
+    timestamp = datetime.now().strftime("%H:%M:%S")
+    formatted_msg = f"[{timestamp}] {msg}"
+    print(formatted_msg, flush=True)
+    log_buffer.append(formatted_msg)
+
+# --- 補助機能 ---
 def sanitize_filename(filename):
-    """ファイル名に使えない文字を削除・置換する"""
     return re.sub(r'[\\/:*?"<>|]', '', filename)
 
+# --- 各処理工程 ---
+
 def download_audio(url, output_dir="temp"):
-    """YouTubeから音声のみをダウンロードし、タイトルを返す"""
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
         
-    # タイトル取得のために一度情報を抽出
+    log_message("YouTube情報の解析中...")
     with YoutubeDL() as ydl:
         info = ydl.extract_info(url, download=False)
         title = info.get('title', 'output')
@@ -38,63 +52,61 @@ def download_audio(url, output_dir="temp"):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        # ファイル名をタイトルにする設定
         'outtmpl': f'{output_dir}/{safe_title}.%(ext)s',
+        'quiet': True, # ログが汚れすぎないように抑制
     }
     
+    log_message(f"ダウンロード開始: {safe_title}")
     with YoutubeDL(options) as ydl:
         ydl.download([url])
-        return f"{output_dir}/{safe_title}.mp3", safe_title
+    return f"{output_dir}/{safe_title}.mp3", safe_title
 
 def transcribe_audio(file_path):
-    """音声を文字起こしする"""
+    log_message("Whisperモデル読み込み中...")
     model = WhisperModel("base", device="cpu", compute_type="int8")
+    log_message("文字起こし実行中（CPU負荷がかかります）...")
     segments, info = model.transcribe(file_path, beam_size=5)
     
     text_result = ""
     for segment in segments:
-        print(f"[{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+        # 短いログとして進捗を表示
+        log_message(f"[文字起こし] {segment.start:.1f}s >> {segment.text[:20]}...")
         text_result += segment.text + "\n"
     
     return text_result
 
 def rewrite_text(raw_text):
-    """RewriterコンテナのAPIを呼び出し、Geminiで校正する"""
     api_url = f"http://{REWRITER_HOST}:5000/rewrite"
-    
-    print(f"--- Rewriter API ({api_url}) へ校正リクエストを送信 ---")
+    log_message(f"Gemini APIへ校正依頼を送信中...")
     
     try:
         response = requests.post(api_url, json={"text": raw_text})
-        response.raise_for_status() # HTTPエラーが発生した場合に例外を投げる
-        
+        response.raise_for_status()
         rewritten_text = response.json().get("rewritten_text")
         if rewritten_text:
+            log_message("校正が完了しました")
             return rewritten_text
         else:
-            print("警告: Rewriterから有効な校正済みテキストが返されませんでした。生テキストを使用します。")
+            log_message("警告: 校正テキストが空です")
             return raw_text
-            
-    except requests.exceptions.RequestException as e:
-        print(f"エラー: Rewriterコンテナとの通信に失敗しました。生テキストを使用します。エラー: {e}")
+    except Exception as e:
+        log_message(f"Rewriter通信エラー: {e}")
         return raw_text
 
 def generate_voice(text, output_path, speaker_id=1):
     host = VOICEVOX_HOST
     port = 50021
-    
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    
-    # AudioSegmentの空オブジェクトを作成
     combined_audio = AudioSegment.empty()
 
-    print(f"--- VOICEVOX: 全{len(lines)}行の合成を開始 ---")
+    log_message(f"VOICEVOX音声合成開始 (全{len(lines)}行)")
 
     for i, line in enumerate(lines):
         try:
-            print(f"[{i+1}/{len(lines)}] 合成中: {line[:20]}...")
+            # 1行ごとの進捗をログに送る
+            if i % 5 == 0 or i == len(lines)-1: # 5行おきに表示してログをスッキリさせる
+                log_message(f"音声合成中: {i+1}/{len(lines)}行目")
             
-            # 1. クエリ作成
             res_query = requests.post(
                 f"http://{host}:{port}/audio_query",
                 params={"text": line, "speaker": speaker_id}
@@ -102,7 +114,6 @@ def generate_voice(text, output_path, speaker_id=1):
             res_query.raise_for_status()
             query = res_query.json()
 
-            # 2. 音声合成
             res_synthesis = requests.post(
                 f"http://{host}:{port}/synthesis",
                 params={"speaker": speaker_id},
@@ -111,95 +122,84 @@ def generate_voice(text, output_path, speaker_id=1):
             )
             res_synthesis.raise_for_status()
             
-            # 3. バイナリをAudioSegmentオブジェクトに変換して結合
-            # BytesIOを使ってメモリ上のバイナリをファイルのように扱う
             line_audio = AudioSegment.from_wav(io.BytesIO(res_synthesis.content))
-            
-            # 1行ごとに0.5秒（500ミリ秒）の無音を挟むと自然になります
             combined_audio += line_audio + AudioSegment.silent(duration=500)
             
         except Exception as e:
-            print(f"警告: {i+1}行目の合成でエラーが発生しました。: {e}")
+            log_message(f"行 {i+1} で合成失敗: {e}")
             continue
 
     if len(combined_audio) > 0:
-        # 最後に一括で書き出し（ヘッダも自動修復される）
         combined_audio.export(output_path, format="wav")
-        print(f"音声ファイル保存完了（長さ: {len(combined_audio)/1000:.1f}秒）: {output_path}")
+        log_message(f"音声ファイル完成: {len(combined_audio)/1000:.1f}秒")
         return True
-    else:
-        print("エラー: 音声データが生成されませんでした。")
-        return False
+    return False
 
 def upload_to_drive(file_path):
     storage_url = "http://storage:5001/upload"
+    log_message(f"ドライブ転送中: {os.path.basename(file_path)}")
     try:
         res = requests.post(storage_url, json={"file_path": file_path})
+        log_message(f"アップロード完了")
         return res.json()
     except Exception as e:
-        print(f"アップロード失敗: {e}")
+        log_message(f"アップロード失敗: {e}")
+
+# --- メインロジック ---
 
 def heavy_process(video_url):
-    """
-    これまでの worker.py のメインロジックをここにまとめる
-    """
     try:
-        print(f"処理開始: {video_url}")
-        # 1. YouTubeダウンロード
-        print("--- ダウンロード開始 ---")
+        log_message(f"--- 処理受付: {video_url} ---")
+        
+        # 1. ダウンロード
         audio_file_path, title = download_audio(video_url)
     
-        print(f"--- 文字起こし開始: {title} ---")
+        # 2. 文字起こし
         raw_text = transcribe_audio(audio_file_path)
 
-        print("3. Geminiで校正中...")
+        # 3. 校正
         rewritten_text = rewrite_text(raw_text)
     
-        # 3. テキストファイルを保存
-        output_raw_path = f"temp/{title}_raw.txt" # 生テキスト
-        output_rewritten_path = f"temp/{title}_rewritten.txt" # 校正済みテキスト
-    
-        with open(output_raw_path, "w", encoding="utf-8") as f:
-            f.write(raw_text)
-        
-        with open(output_rewritten_path, "w", encoding="utf-8") as f:
-            f.write(rewritten_text)
-        
-        print(f"生テキスト保存先: {output_raw_path}")
-        print(f"校正済みテキスト保存先: {output_rewritten_path}")
+        # ファイル保存
+        output_raw_path = f"temp/{title}_raw.txt"
+        output_rewritten_path = f"temp/{title}_rewritten.txt"
+        with open(output_raw_path, "w", encoding="utf-8") as f: f.write(raw_text)
+        with open(output_rewritten_path, "w", encoding="utf-8") as f: f.write(rewritten_text)
 
-        print("4. VOICEVOXで音声合成中...")
+        # 4. 音声合成
         output_voice_path = f"temp/{title}_rewritten.wav"
+        generate_voice(rewritten_text, output_voice_path) 
     
-        # 校正済みのテキストを使って音声合成を実行
-        generate_voice(rewritten_text, output_voice_path, speaker_id=1) 
-    
-        print("5. Google Driveへアップロード中...")
-        upload_to_drive(output_rewritten_path) # テキスト
-        upload_to_drive(output_voice_path)     # 音声
+        # 5. アップロード
+        upload_to_drive(output_rewritten_path)
+        upload_to_drive(output_voice_path)
 
-        print(f"すべての処理が完了しました: {video_url}")
+        log_message(f"✅ すべての工程が正常に完了しました")
     except Exception as e:
-        print(f"エラー発生: {e}")
+        log_message(f"❌ 致命的エラー: {e}")
+
+# --- APIルート ---
 
 @app.route('/process', methods=['POST'])
 def handle_process():
     data = request.json
     video_url = data.get('url')
-    
     if not video_url:
         return jsonify({"status": "error", "message": "URLがありません"}), 400
 
-    # 重い処理を別スレッドで開始（フロントエンドを待たせない）
     thread = threading.Thread(target=heavy_process, args=(video_url,))
     thread.start()
 
     return jsonify({
         "status": "accepted",
-        "message": "処理を開始しました。完了まで数分かかります。Googleドライブを確認してください。"
+        "message": "処理を開始しました。下のログパネルで進捗を確認してください。"
     })
 
+@app.route('/logs', methods=['GET'])
+def get_logs():
+    """溜まっているログをJSONで返す"""
+    return jsonify({"logs": list(log_buffer)})
+
 if __name__ == '__main__':
-    # 外部（Frontendコンテナ）からのアクセスを許可
     app.run(host='0.0.0.0', port=5000)
     
