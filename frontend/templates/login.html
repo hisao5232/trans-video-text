@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Video Analytics</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container" style="max-width: 400px;">
+        <h1>LOGIN</h1>
+        <form method="POST">
+            <div class="input-wrapper">
+                <input type="text" name="username" placeholder="ユーザー名" required>
+            </div>
+            <div class="input-wrapper">
+                <input type="password" name="password" placeholder="パスワード" required>
+            </div>
+            <button type="submit" style="width: 100%; margin-top: 10px;">ログイン</button>
+        </form>
+        
+        {% with messages = get_flashed_messages() %}
+          {% if messages %}
+            <p class="error" style="margin-top: 15px; text-align: center;">{{ messages[0] }}</p>
+          {% endif %}
+        {% endwith %}
+    </div>
+</body>
+</html>

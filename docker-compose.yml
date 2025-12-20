@@ -43,5 +43,7 @@ services:
     container_name: frontend
     ports:
       - "8000:8000"
+    environment:
+      - APP_PASSWORD=${APP_PASSWORD}
+      - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
     restart: always
-    

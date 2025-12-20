@@ -1,52 +1,54 @@
-/* 全体の背景設定 */
-body {
+/* =========================================
+   1. 全体共通（ベース）
+   ========================================= */
+   body {
     background-color: #121212;
     color: #e0e0e0;
-    font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
-    margin: 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: 100vh;
+    margin: 0;
 }
 
-/* メインのコンテナ */
 .container {
     background-color: #1e1e1e;
     padding: 30px;
     border-radius: 12px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.7);
-    width: 90%;
-    max-width: 600px;
     border: 1px solid #333;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    width: 90%;
+    max-width: 600px; /* メイン画面に合わせて少し広めに */
 }
 
 h1 {
     color: #00d4ff;
     text-align: center;
-    margin-top: 0;
+    margin-bottom: 25px;
     font-weight: 300;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
 }
 
-/* 入力エリア */
-.input-group {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-input[type="text"] {
-    flex: 1;
+/* =========================================
+   2. 入力欄・ボタン（ログイン＆メイン共通）
+   ========================================= */
+input[type="text"],
+input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
     background-color: #2a2a2a;
     border: 1px solid #444;
     border-radius: 6px;
-    padding: 12px;
-    color: #fff;
+    padding: 12px 15px;
+    color: #ffffff;
+    font-size: 16px;
     outline: none;
+    transition: border-color 0.3s;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="password"]:focus {
     border-color: #00d4ff;
 }
 
@@ -54,10 +56,11 @@ button {
     background-color: #00d4ff;
     color: #121212;
     border: none;
-    padding: 12px 24px;
+    padding: 14px;
     border-radius: 6px;
     font-weight: bold;
     cursor: pointer;
+    font-size: 16px;
     transition: background 0.3s;
 }
 
@@ -70,7 +73,22 @@ button:disabled {
     cursor: not-allowed;
 }
 
-/* ログパネル（ここが重要！） */
+/* =========================================
+   3. メイン画面専用（URL入力とログパネル）
+   ========================================= */
+
+/* URL入力とボタンを横並びにする */
+.input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.input-group input {
+    flex: 1; /* 入力欄を伸ばす */
+}
+
+/* ターミナル風ログパネル */
 .log-panel {
     background-color: #000;
     border: 1px solid #444;
@@ -82,10 +100,11 @@ button:disabled {
     font-size: 13px;
     line-height: 1.5;
     color: #00ff41; /* ターミナルグリーン */
-    box-shadow: inset 0 0 10px rgba(0,255,0,0.1);
+    box-shadow: inset 0 0 10px rgba(0,255,0,0.2);
+    margin-top: 10px;
 }
 
-/* スクロールバーのカスタマイズ */
+/* スクロールバーのデザイン */
 .log-panel::-webkit-scrollbar {
     width: 8px;
 }
@@ -94,11 +113,12 @@ button:disabled {
     border-radius: 4px;
 }
 
-/* 結果表示メッセージ */
+/* メッセージ表示 */
 #result-msg {
-    margin-top: 15px;
+    margin-top: 10px;
     text-align: center;
-    font-size: 14px;
+    min-height: 20px;
 }
-.success { color: #00ff88; }
+
 .error { color: #ff4d4d; }
+.success { color: #00ff88; }
