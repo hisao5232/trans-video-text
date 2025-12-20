@@ -3,13 +3,14 @@ import re  # ファイル名洗浄用
 import requests
 from yt_dlp import YoutubeDL
 from faster_whisper import WhisperModel
+import json
+import io
+from pydub import AudioSegment
 
-# --- 環境変数からホスト名を取得 (docker-compose.ymlで設定したサービス名) ---
-REWRITER_HOST = os.environ.get("REWRITER_HOST", "rewriter")
-# --- 環境変数からホスト名を取得 ---
+# --- 環境設定 ---
 REWRITER_HOST = os.environ.get("REWRITER_HOST", "rewriter") 
-# VOICEVOX連携用に追加
 VOICEVOX_HOST = os.environ.get("VOICEVOX_HOST", "voicevox")
+STORAGE_HOST = "storage"
 
 def sanitize_filename(filename):
     """ファイル名に使えない文字を削除・置換する"""
@@ -74,8 +75,69 @@ def rewrite_text(raw_text):
         print(f"エラー: Rewriterコンテナとの通信に失敗しました。生テキストを使用します。エラー: {e}")
         return raw_text
 
+def generate_voice(text, output_path, speaker_id=1):
+    host = VOICEVOX_HOST
+    port = 50021
+    
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    
+    # AudioSegmentの空オブジェクトを作成
+    combined_audio = AudioSegment.empty()
+
+    print(f"--- VOICEVOX: 全{len(lines)}行の合成を開始 ---")
+
+    for i, line in enumerate(lines):
+        try:
+            print(f"[{i+1}/{len(lines)}] 合成中: {line[:20]}...")
+            
+            # 1. クエリ作成
+            res_query = requests.post(
+                f"http://{host}:{port}/audio_query",
+                params={"text": line, "speaker": speaker_id}
+            )
+            res_query.raise_for_status()
+            query = res_query.json()
+
+            # 2. 音声合成
+            res_synthesis = requests.post(
+                f"http://{host}:{port}/synthesis",
+                params={"speaker": speaker_id},
+                headers={'Content-Type': 'application/json'},
+                data=json.dumps(query)
+            )
+            res_synthesis.raise_for_status()
+            
+            # 3. バイナリをAudioSegmentオブジェクトに変換して結合
+            # BytesIOを使ってメモリ上のバイナリをファイルのように扱う
+            line_audio = AudioSegment.from_wav(io.BytesIO(res_synthesis.content))
+            
+            # 1行ごとに0.5秒（500ミリ秒）の無音を挟むと自然になります
+            combined_audio += line_audio + AudioSegment.silent(duration=500)
+            
+        except Exception as e:
+            print(f"警告: {i+1}行目の合成でエラーが発生しました。: {e}")
+            continue
+
+    if len(combined_audio) > 0:
+        # 最後に一括で書き出し（ヘッダも自動修復される）
+        combined_audio.export(output_path, format="wav")
+        print(f"音声ファイル保存完了（長さ: {len(combined_audio)/1000:.1f}秒）: {output_path}")
+        return True
+    else:
+        print("エラー: 音声データが生成されませんでした。")
+        return False
+
+def upload_to_drive(file_path):
+    storage_url = "http://storage:5001/upload"
+    try:
+        res = requests.post(storage_url, json={"file_path": file_path})
+        return res.json()
+    except Exception as e:
+        print(f"アップロード失敗: {e}")
+
 if __name__ == "__main__":
-    video_url = "https://youtu.be/q0p5rg_6OKg"
+    # テスト用のURL（適宜変更してください）
+    video_url = "https://youtu.be/oruiPIfcTmY"
     
     print("--- ダウンロード開始 ---")
     audio_file_path, title = download_audio(video_url)
@@ -83,10 +145,10 @@ if __name__ == "__main__":
     print(f"--- 文字起こし開始: {title} ---")
     raw_text = transcribe_audio(audio_file_path)
 
-# 2. Geminiによる校正（NEW）
+    print("3. Geminiで校正中...")
     rewritten_text = rewrite_text(raw_text)
     
-# 3. テキストファイルを保存
+    # 3. テキストファイルを保存
     output_raw_path = f"temp/{title}_raw.txt" # 生テキスト
     output_rewritten_path = f"temp/{title}_rewritten.txt" # 校正済みテキスト
     
@@ -96,6 +158,18 @@ if __name__ == "__main__":
     with open(output_rewritten_path, "w", encoding="utf-8") as f:
         f.write(rewritten_text)
         
-    print(f"--- 完了 ---")
     print(f"生テキスト保存先: {output_raw_path}")
     print(f"校正済みテキスト保存先: {output_rewritten_path}")
+
+    print("4. VOICEVOXで音声合成中...")
+    output_voice_path = f"temp/{title}_rewritten.wav"
+    
+    # 校正済みのテキストを使って音声合成を実行
+    generate_voice(rewritten_text, output_voice_path, speaker_id=1) 
+    
+    print("5. Google Driveへアップロード中...")
+    upload_to_drive(output_rewritten_path) # テキスト
+    upload_to_drive(output_voice_path)     # 音声
+
+    print(f"--- 全処理完了 ---")
+    

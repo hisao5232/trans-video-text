@@ -25,3 +25,15 @@ services:
       - "50021:50021"
     restart: always
     
+  storage:
+    build: ./storage
+    container_name: storage
+    volumes:
+      - ./temp:/app/temp
+      - ./storage/token.json:/app/token.json
+      - ./storage/credentials.json:/app/credentials.json
+    environment:
+      # GoogleドライブのフォルダID（ブラウザのURL末尾にある文字列）を貼ると、そのフォルダに保存されます
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+      - MY_EMAIL=${MY_EMAIL}
+    restart: always

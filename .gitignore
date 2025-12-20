@@ -12,3 +12,8 @@ temp/
 .DS_Store
 
 .env
+storage/token.json
+storage/credentials.json
+storage/client_secrets.json
+temp/
+__pycache__/
