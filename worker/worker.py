@@ -6,11 +6,15 @@ from faster_whisper import WhisperModel
 import json
 import io
 from pydub import AudioSegment
+import threading
+from flask import Flask, request, jsonify
 
 # --- 環境設定 ---
 REWRITER_HOST = os.environ.get("REWRITER_HOST", "rewriter") 
 VOICEVOX_HOST = os.environ.get("VOICEVOX_HOST", "voicevox")
 STORAGE_HOST = "storage"
+
+app = Flask(__name__)
 
 def sanitize_filename(filename):
     """ファイル名に使えない文字を削除・置換する"""
@@ -135,41 +139,67 @@ def upload_to_drive(file_path):
     except Exception as e:
         print(f"アップロード失敗: {e}")
 
-if __name__ == "__main__":
-    # テスト用のURL（適宜変更してください）
-    video_url = "https://youtu.be/oruiPIfcTmY"
+def heavy_process(video_url):
+    """
+    これまでの worker.py のメインロジックをここにまとめる
+    """
+    try:
+        print(f"処理開始: {video_url}")
+        # 1. YouTubeダウンロード
+        print("--- ダウンロード開始 ---")
+        audio_file_path, title = download_audio(video_url)
     
-    print("--- ダウンロード開始 ---")
-    audio_file_path, title = download_audio(video_url)
-    
-    print(f"--- 文字起こし開始: {title} ---")
-    raw_text = transcribe_audio(audio_file_path)
+        print(f"--- 文字起こし開始: {title} ---")
+        raw_text = transcribe_audio(audio_file_path)
 
-    print("3. Geminiで校正中...")
-    rewritten_text = rewrite_text(raw_text)
+        print("3. Geminiで校正中...")
+        rewritten_text = rewrite_text(raw_text)
     
-    # 3. テキストファイルを保存
-    output_raw_path = f"temp/{title}_raw.txt" # 生テキスト
-    output_rewritten_path = f"temp/{title}_rewritten.txt" # 校正済みテキスト
+        # 3. テキストファイルを保存
+        output_raw_path = f"temp/{title}_raw.txt" # 生テキスト
+        output_rewritten_path = f"temp/{title}_rewritten.txt" # 校正済みテキスト
     
-    with open(output_raw_path, "w", encoding="utf-8") as f:
-        f.write(raw_text)
+        with open(output_raw_path, "w", encoding="utf-8") as f:
+            f.write(raw_text)
         
-    with open(output_rewritten_path, "w", encoding="utf-8") as f:
-        f.write(rewritten_text)
+        with open(output_rewritten_path, "w", encoding="utf-8") as f:
+            f.write(rewritten_text)
         
-    print(f"生テキスト保存先: {output_raw_path}")
-    print(f"校正済みテキスト保存先: {output_rewritten_path}")
+        print(f"生テキスト保存先: {output_raw_path}")
+        print(f"校正済みテキスト保存先: {output_rewritten_path}")
 
-    print("4. VOICEVOXで音声合成中...")
-    output_voice_path = f"temp/{title}_rewritten.wav"
+        print("4. VOICEVOXで音声合成中...")
+        output_voice_path = f"temp/{title}_rewritten.wav"
     
-    # 校正済みのテキストを使って音声合成を実行
-    generate_voice(rewritten_text, output_voice_path, speaker_id=1) 
+        # 校正済みのテキストを使って音声合成を実行
+        generate_voice(rewritten_text, output_voice_path, speaker_id=1) 
     
-    print("5. Google Driveへアップロード中...")
-    upload_to_drive(output_rewritten_path) # テキスト
-    upload_to_drive(output_voice_path)     # 音声
+        print("5. Google Driveへアップロード中...")
+        upload_to_drive(output_rewritten_path) # テキスト
+        upload_to_drive(output_voice_path)     # 音声
 
-    print(f"--- 全処理完了 ---")
+        print(f"すべての処理が完了しました: {video_url}")
+    except Exception as e:
+        print(f"エラー発生: {e}")
+
+@app.route('/process', methods=['POST'])
+def handle_process():
+    data = request.json
+    video_url = data.get('url')
+    
+    if not video_url:
+        return jsonify({"status": "error", "message": "URLがありません"}), 400
+
+    # 重い処理を別スレッドで開始（フロントエンドを待たせない）
+    thread = threading.Thread(target=heavy_process, args=(video_url,))
+    thread.start()
+
+    return jsonify({
+        "status": "accepted",
+        "message": "処理を開始しました。完了まで数分かかります。Googleドライブを確認してください。"
+    })
+
+if __name__ == '__main__':
+    # 外部（Frontendコンテナ）からのアクセスを許可
+    app.run(host='0.0.0.0', port=5000)
     

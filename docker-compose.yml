@@ -37,3 +37,11 @@ services:
       - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
       - MY_EMAIL=${MY_EMAIL}
     restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: frontend
+    ports:
+      - "8000:8000"
+    restart: always
+    

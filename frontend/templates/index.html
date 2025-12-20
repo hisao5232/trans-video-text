@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video to Text/Audio</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+        input[type="text"] { width: 80%; padding: 10px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>YouTube 文字起こし & 音声合成</h1>
+    <form action="/submit" method="post">
+        <input type="text" name="video_url" placeholder="https://www.youtube.com/watch?v=...">
+        <button type="submit">開始</button>
+    </form>
+    <div id="result" style="margin-top: 20px; font-weight: bold; color: green;"></div>
+
+    <script>
+    document.querySelector('form').onsubmit = async (e) => {
+        e.preventDefault();
+        const formData = new FormData(e.target);
+        const resultDiv = document.getElementById('result');
+        resultDiv.innerText = "処理を受け付けました。Googleドライブを確認してください...";
+        
+        const response = await fetch('/submit', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        resultDiv.innerText = result.message;
+    };
+    </script>
+</body>
+</html>

@@ -14,5 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# コンテナが勝手に終了しないようにする（後でAPI化するため）
-CMD ["tail", "-f", "/dev/null"]
+CMD ["python", "worker.py"]
