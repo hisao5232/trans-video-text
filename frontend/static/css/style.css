@@ -122,3 +122,23 @@ button:disabled {
 
 .error { color: #ff4d4d; }
 .success { color: #00ff88; }
+
+/* --- フッターのスタイル --- */
+.site-footer {
+    margin-top: 30px;
+    padding-top: 15px;
+    border-top: 1px solid #333; /* 上に細い線を引いて区切りを作る */
+    text-align: center;
+    font-size: 12px;
+    color: #888;
+    letter-spacing: 1px;
+}
+
+/* リンクがある場合に備えて */
+.site-footer a {
+    color: #888;
+    text-decoration: none;
+}
+.site-footer a:hover {
+    color: #00d4ff;
+}
