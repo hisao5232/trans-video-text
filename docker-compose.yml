@@ -1,6 +1,7 @@
 services:
   worker:
     build: ./worker
+    container_name: video-analytics-worker
     volumes:
       - ./temp:/app/temp
     depends_on:
@@ -10,6 +11,8 @@ services:
       - VOICEVOX_HOST=voicevox
       - REWRITER_HOST=rewriter
     tty: true
+    networks:
+      - traefik-service_default
 
   rewriter: # ★新規サービス
     build: ./rewriter
@@ -18,12 +21,16 @@ services:
     ports:
       - "5000:5000" # 外部からのアクセスを許可したい場合（必須ではないがデバッグ用に残す）
     restart: always
+    networks:
+      - traefik-service_default
 
   voicevox:
     image: voicevox/voicevox_engine:cpu-latest
     ports:
       - "50021:50021"
     restart: always
+    networks:
+      - traefik-service_default
     
   storage:
     build: ./storage
@@ -37,13 +44,36 @@ services:
       - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
       - MY_EMAIL=${MY_EMAIL}
     restart: always
+    networks:
+      - traefik-service_default
 
   frontend:
     build: ./frontend
-    container_name: frontend
-    ports:
-      - "8000:8000"
+    container_name: video-analytics-frontend
     environment:
       - APP_PASSWORD=${APP_PASSWORD}
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
+      - WORKER_URL=http://worker:5000  # コンテナ間通信
+    depends_on:
+      - worker
     restart: always
+    networks:
+      - traefik-service_default  # ★既存のTraefikプロジェクトのネットワークを指定
+    labels:
+      - "traefik.enable=true"
+      # サブドメインを video-ai 等に設定（既存のDOMAIN変数を利用）
+      - "traefik.http.routers.video-ai.rule=Host(`video-ai.${DOMAIN}`)"
+      - "traefik.http.routers.video-ai.entrypoints=websecure"
+      - "traefik.http.routers.video-ai.tls.certresolver=lets-encrypt"
+      # Flaskのポートを指定
+      - "traefik.http.services.video-ai.loadbalancer.server.port=8000"
+
+      # --- ここから追加：HTTPからHTTPSへのリダイレクト設定 ---
+      - "traefik.http.routers.video-ai-http.rule=Host(`video-ai.${DOMAIN}`)"
+      - "traefik.http.routers.video-ai-http.entrypoints=web"
+      - "traefik.http.routers.video-ai-http.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+
+networks:
+  traefik-service_default:
+    external: true
